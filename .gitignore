@@ -2,6 +2,8 @@
 # Large generated files — re-create with capture_face.py / train_model.py / export_model.py
 dataset/
 checkpoints/
+attendance/
+
 
 # ── Python runtime ────────────────────────────────────────────────────────────
 __pycache__/
