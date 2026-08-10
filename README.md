@@ -8,36 +8,31 @@ inference time — no PyTorch runtime needed during live recognition.
 
 ## 1. Architecture overview
 
-```
-Webcam Frame
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│  OpenCV DNN Face Detector               │
-│  (SSD ResNet-10 — face_detector.py)     │  ← deep model for detection
-│  models/deploy.prototxt                 │    (not trained on identities)
-│  models/res10_300x300_ssd_iter...caffemodel │
-└──────────────┬──────────────────────────┘
-               │  bounding boxes (x, y, w, h)
-               ▼
-      ┌─────────────────┐
-      │  Crop + resize  │  96×96 grayscale, histogram equalized
-      │  each face      │
-      └────────┬────────┘
-               │
-               ▼
-┌──────────────────────────────────────────┐
-│  FaceCNN (ONNX via cv2.dnn)              │
-│  checkpoints/face_cnn.onnx               │  ← trained from scratch
-│  checkpoints/centroids.npy              │    on YOUR captured images
-└──────────────┬───────────────────────────┘
-               │  128-D embedding
-               ▼
-      Cosine similarity vs. per-class centroids
-               │
-      best_sim >= threshold?
-       ├─ YES → Person Name (confidence %)
-       └─ NO  → Unknown
+```mermaid
+flowchart TD
+    A["📷 Webcam Frame"] --> B
+
+    B["🔍 OpenCV DNN Face Detector\nSSD ResNet-10  —  face_detector.py\nmodels/deploy.prototxt\nmodels/res10_300x300_ssd_iter_140000_fp16.caffemodel"]
+    B --> |"bounding boxes\nx, y, w, h"| C
+
+    C["✂️ Crop + Resize Each Face\n96×96 grayscale · histogram equalized"]
+    C --> D
+
+    D["🧠 FaceCNN  —  ONNX via cv2.dnn\ncheckpoints/face_cnn.onnx\ncheckpoints/centroids.npy\ntrained from scratch on YOUR captured images"]
+    D --> |"128-D embedding"| E
+
+    E["📐 Cosine Similarity\nvs. per-class centroids"]
+    E --> F{{"best_sim ≥ threshold?"}}
+
+    F --> |"YES"| G["✅ Person Name\nconfidence %"]
+    F --> |"NO"| H["❌ Unknown"]
+
+    style B fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style C fill:#1a3a2c,stroke:#4aff9e,color:#fff
+    style D fill:#3a1a5c,stroke:#c44aff,color:#fff
+    style E fill:#3a2a1a,stroke:#ffaa4a,color:#fff
+    style G fill:#1a4a1a,stroke:#4aff4a,color:#fff
+    style H fill:#4a1a1a,stroke:#ff4a4a,color:#fff
 ```
 
 **Two independent stages:**
