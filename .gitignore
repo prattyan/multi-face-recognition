@@ -1,0 +1,53 @@
+# ── Captured dataset & trained weights ───────────────────────────────────────
+# Large generated files — re-create with capture_face.py / train_model.py / export_model.py
+dataset/
+checkpoints/
+
+# ── Python runtime ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ── Virtual environment ───────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── PyTorch / ML artefacts ────────────────────────────────────────────────────
+*.pt
+*.pth
+*.onnx
+*.npy
+*.npz
+
+# ── Logs & temp files ─────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+
+# ── OS generated ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / editor ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# NOTE: models/ is intentionally NOT ignored.
+# deploy.prototxt and the .caffemodel are required to run the project
+# and should be committed so others can clone and run without extra downloads.
