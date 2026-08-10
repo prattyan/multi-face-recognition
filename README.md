@@ -1,8 +1,7 @@
 # Multi-Face Recognition System (Trained From Scratch)
 
 A real-time, multi-face recognition pipeline built without any pretrained
-identity models. Both detection and recognition use **OpenCV DNN** at
-inference time — no PyTorch runtime needed during live recognition.
+identity models. Features **face anti-spoofing (liveness detection)**, **automated CSV attendance logging**, and pure **OpenCV DNN** inference — no PyTorch runtime needed during live recognition.
 
 ---
 
@@ -17,6 +16,7 @@ flowchart TD
 
     C["✂️ Crop + Resize Each Face\n96×96 grayscale · histogram equalized"]
     C --> D
+    C --> L["🛡️ Liveness Detector\nanti_spoof.py\nLaplacian texture + eye blink tracking"]
 
     D["🧠 FaceCNN  —  ONNX via cv2.dnn\ncheckpoints/face_cnn.onnx\ncheckpoints/centroids.npy\ntrained from scratch on YOUR captured images"]
     D --> |"128-D embedding"| E
@@ -24,8 +24,12 @@ flowchart TD
     E["📐 Cosine Similarity\nvs. per-class centroids"]
     E --> F{{"best_sim ≥ threshold?"}}
 
-    F --> |"YES"| G["✅ Person Name\nconfidence %"]
+    F --> |"YES"| G["Recognized Person"]
     F --> |"NO"| H["❌ Unknown"]
+
+    L --> |"LIVE + Recognized"| M["📋 Attendance Logger\nattendance_logger.py\nLogs to attendance/attendance_YYYY-MM-DD.csv"]
+    G --> M
+    L --> |"SPOOF"| N["🚫 SPOOF (Blocked)"]
 
     style B fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style C fill:#1a3a2c,stroke:#4aff9e,color:#fff
@@ -33,14 +37,19 @@ flowchart TD
     style E fill:#3a2a1a,stroke:#ffaa4a,color:#fff
     style G fill:#1a4a1a,stroke:#4aff4a,color:#fff
     style H fill:#4a1a1a,stroke:#ff4a4a,color:#fff
+    style L fill:#4a3a1a,stroke:#ffd700,color:#fff
+    style M fill:#1a4a3a,stroke:#00ffff,color:#fff
+    style N fill:#5c1a1a,stroke:#ff0000,color:#fff
 ```
 
-**Two independent stages:**
+**Key Components:**
 
 | Stage | Component | File | Nature |
 |:---|:---|:---|:---|
 | Detection ("where is a face?") | OpenCV DNN SSD ResNet-10 | `face_detector.py` | Pre-trained face localizer — NOT trained on identities |
 | Recognition ("whose face is it?") | FaceCNN → ONNX → cv2.dnn | `model.py`, `recognize_live.py` | Trained 100% from scratch on your captured data |
+| Anti-Spoofing ("is it a real person?") | Texture + Blink Tracking | `anti_spoof.py` | Pure OpenCV — checks micro-texture & eye blinks |
+| Attendance ("log entry") | CSV Logger with Cooldown | `attendance_logger.py` | Generates daily CSV files (`attendance/attendance_YYYY-MM-DD.csv`) |
 
 ---
 
@@ -51,8 +60,8 @@ Step 1         Step 2         Step 3          Step 4
 capture        train          export          recognize
 _face.py  →  train_model  →  export_model  →  recognize
   ↓            .py              .py             _live.py
-dataset/      checkpoints/    checkpoints/    Live camera
-<name>/       face_cnn.pt     face_cnn.onnx   with labels
+dataset/      checkpoints/    checkpoints/    Live camera + Anti-Spoof
+<name>/       face_cnn.pt     face_cnn.onnx   + CSV Attendance Log
 *.png         centroids       centroids.npy
               classes.json    classes.json
 ```
@@ -122,27 +131,42 @@ Converts the trained PyTorch model to ONNX format and saves:
 **Run this every time after training.** If you forget, `recognize_live.py`
 will detect the mismatch and print a clear error.
 
-### Step 4 — Run live recognition
+### Step 4 — Run live recognition + attendance + anti-spoofing
 
 ```powershell
-# Webcam
+# Standard run (webcam)
 python recognize_live.py --camera 1
 
 # DroidCam
 python recognize_live.py --droidcam 192.168.1.5
 
-# With custom threshold
-python recognize_live.py --camera 1 --threshold 0.55
-
-# Debug mode: prints cosine scores per face to calibrate threshold
+# Debug mode: prints cosine scores & texture scores per frame
 python recognize_live.py --camera 1 --debug
+
+# Custom options:
+python recognize_live.py --camera 1 --threshold 0.35 --attendance_cooldown 120
+python recognize_live.py --camera 1 --no_spoof      # disable anti-spoofing
+python recognize_live.py --camera 1 --no_attendance # disable attendance logging
 ```
 
 Press `q` to quit.
 
 ---
 
-## 5. Calibrating the threshold
+## 5. Attendance & Anti-Spoofing Details
+
+### 🛡️ Anti-Spoofing (Liveness Detection)
+- **Texture Analysis (Laplacian Variance):** Real faces have complex skin micro-texture. Flat phone screens or paper photos have low texture scores and get flagged as `SPOOF`.
+- **Temporal Eye Blink Tracking:** Uses OpenCV's `haarcascade_eye` to track state changes over a rolling window. Static photos (where eyes never change state) fail the liveness check.
+
+### 📋 Attendance Logging
+- Daily CSV files created automatically under `attendance/attendance_YYYY-MM-DD.csv`.
+- **Cooldown protection:** Default `60s` cooldown per person prevents duplicate logs if someone stays in front of the camera.
+- Attendance is logged **ONLY** when a face is both **Recognized AND Live**.
+
+---
+
+## 6. Calibrating the threshold
 
 The `--threshold` is a **cosine similarity** value (0.0 – 1.0):
 
@@ -154,13 +178,14 @@ The `--threshold` is a **cosine similarity** value (0.0 – 1.0):
 **Use `--debug` to see actual scores:**
 ```
 [DEBUG] alice:0.741, bob:0.123  | threshold=0.30
+[LIVENESS] fid=12_15_4_4  texture=112.4  live=True
 ```
 
 Default threshold: `0.30`. A good starting range is `0.25 – 0.55`.
 
 ---
 
-## 6. Adding a new person later
+## 7. Adding a new person later
 
 ```powershell
 python capture_face.py --name charlie
@@ -169,12 +194,9 @@ python export_model.py
 python recognize_live.py --camera 1
 ```
 
-Full retraining on all captured data takes only a few minutes — simpler
-and more reliable than incremental updates.
-
 ---
 
-## 7. Dataset layout
+## 8. Dataset layout
 
 ```
 dataset/
@@ -190,19 +212,16 @@ dataset/
     └── ...
 ```
 
-- **PNG** — lossless, no compression artifacts.
-- **Grayscale** — removes color as a variable; matches `FaceCNN`'s `Conv2d(1, ...)` input.
-- **96×96** — fixed size every crop is resized to.
-- **Label by folder** — `train_model.py` treats each subfolder as a class, same convention as `torchvision.datasets.ImageFolder`.
-
 ---
 
-## 8. File structure
+## 9. File structure
 
 ```
 Multi_Face/
 ├── requirements.txt            # pip dependencies
 ├── face_detector.py            # OpenCV DNN SSD face detector wrapper
+├── anti_spoof.py               # Liveness / Anti-spoofing detector (texture + blink)
+├── attendance_logger.py        # CSV attendance logger with per-person cooldown
 ├── model.py                    # FaceCNN architecture (PyTorch)
 ├── capture_face.py             # Step 1: Build your dataset
 ├── train_model.py              # Step 2: Train from scratch (PyTorch)
@@ -213,23 +232,20 @@ Multi_Face/
 │   └── res10_300x300_ssd_iter_140000_fp16.caffemodel  # DNN face detector weights
 ├── dataset/                    # Created by capture_face.py
 │   └── <name>/*.png
-└── checkpoints/                # Created by train_model.py + export_model.py
-    ├── face_cnn.pt             # PyTorch weights (training)
-    ├── face_cnn.onnx           # ONNX model (inference via cv2.dnn)
-    ├── centroids.npy           # Per-class centroid embeddings
-    └── classes.json            # Index → person name mapping
+├── checkpoints/                # Created by train_model.py + export_model.py
+│   ├── face_cnn.pt             # PyTorch weights (training)
+│   ├── face_cnn.onnx           # ONNX model (inference via cv2.dnn)
+│   ├── centroids.npy           # Per-class centroid embeddings
+│   └── classes.json            # Index → person name mapping
+└── attendance/                 # Created by attendance_logger.py
+    └── attendance_YYYY-MM-DD.csv
 ```
 
 ---
 
-## 9. Design notes
+## 10. Design notes
 
 - **Why OpenCV DNN for detection**: Haar Cascade (the 2001 Viola-Jones method) misses angled faces, struggles in low light, and produces many false positives. The SSD ResNet-10 model is a small, pre-trained face localizer — it detects "is there a face here?" without ever knowing *whose* face it is.
-
 - **Why cosine centroids instead of softmax at inference**: Softmax always picks the most likely known class even for a complete stranger. Cosine similarity against class centroids allows genuine "Unknown" rejection when the face embedding doesn't cluster near any trained identity.
-
-- **Why centroids use clean (non-augmented) images**: Augmentations (random flips, rotations, jitter) shift embeddings away from what a real live camera frame produces. Centroids computed from clean crops match the inference distribution and produce higher cosine similarity scores for known faces.
-
 - **Why ONNX + cv2.dnn at inference**: PyTorch is needed for training (autograd, backprop) but is a large runtime dependency (~700MB). Exporting to ONNX and running via `cv2.dnn` keeps live inference lightweight — no PyTorch import during recognition.
-
-- **Why heavy augmentation during training**: With ~250 images per person, a CNN can memorize backgrounds and lighting rather than faces. `RandomHorizontalFlip`, `RandomRotation`, `ColorJitter`, `RandomAffine`, and `RandomErasing` in `train_model.py` fight this memorization.
+- **Why anti-spoofing + attendance**: Adding liveness detection prevents trivial spoofing with phone screen images, while daily CSV attendance logging turns this pipeline into a complete, usable real-time biometric application.
