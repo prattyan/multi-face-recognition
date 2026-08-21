@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--out_dir", default="dataset")
     parser.add_argument("--camera", "--camera_index", default="0", help="Camera index (0, 1, 2) or IP camera URL")
     parser.add_argument("--droidcam", help="DroidCam IP (e.g., 192.168.1.5) or URL (http://192.168.1.5:4747/video)")
+    parser.add_argument("--fullscreen", action="store_true", help="Start window in full screen mode")
     args = parser.parse_args()
  
     person_dir = os.path.join(args.out_dir, args.name)
@@ -37,12 +38,19 @@ def main():
  
     detector = FaceDetector()
     source = get_camera_source(args)
-    cap = cv2.VideoCapture(source)
+    if isinstance(source, int):
+        cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(source)
+    else:
+        cap = cv2.VideoCapture(source)
 
     # Auto-try index 1 and 2 if default index 0 failed
     if not cap.isOpened() and isinstance(source, int) and source == 0:
         for idx in [1, 2, 3]:
-            temp_cap = cv2.VideoCapture(idx)
+            temp_cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            if not temp_cap.isOpened():
+                temp_cap = cv2.VideoCapture(idx)
             if temp_cap.isOpened():
                 cap = temp_cap
                 source = idx
@@ -52,7 +60,12 @@ def main():
     if not cap.isOpened():
         raise RuntimeError(f"Could not open camera source '{source}'. If using DroidCam, ensure DroidCam Client is running or provide --droidcam <IP>.")
  
-    print(f"Capturing for '{args.name}'. Press 'q' to stop early.")
+    win_name = "Capture (q: quit | f: fullscreen)"
+    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+    if args.fullscreen:
+        cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+    print(f"Capturing for '{args.name}'. Press 'q' to stop early, 'f' to toggle fullscreen.")
     count = 0
     last_save = 0
  
@@ -83,10 +96,15 @@ def main():
  
         cv2.putText(display, f"{args.name}: {count}/{args.num_images}",
                     (10, display.shape[0] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        cv2.imshow("Capture (q to quit)", display)
+        cv2.imshow(win_name, display)
  
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
             break
+        elif key == ord("f"):
+            is_full = cv2.getWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN) == cv2.WINDOW_FULLSCREEN
+            new_mode = cv2.WINDOW_NORMAL if is_full else cv2.WINDOW_FULLSCREEN
+            cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, new_mode)
  
     cap.release()
     cv2.destroyAllWindows()
