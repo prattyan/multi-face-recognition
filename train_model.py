@@ -191,6 +191,13 @@ def main():
     print(f"Saved model & centroids to {args.out_dir}/face_cnn.pt")
     print(f"Saved class mapping to {args.out_dir}/classes.json")
 
+    try:
+        from export_model import main as export_main
+        print("\nAuto-exporting ONNX model & centroids...")
+        export_main()
+    except Exception as e:
+        print(f"Auto-export notification: {e}. You can run 'python export_model.py' manually.")
+
 
 if __name__ == "__main__":
     main()

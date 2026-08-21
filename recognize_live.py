@@ -118,6 +118,10 @@ def main():
     parser.add_argument("--attendance_cooldown", type=float, default=60.0,
                         help="Seconds before the same person can be logged again (default: 60)")
 
+    # Window
+    parser.add_argument("--fullscreen", action="store_true",
+                        help="Start camera window in fullscreen mode")
+
     args = parser.parse_args()
 
     # ── Load class names & centroids ─────────────────────────────────────────
@@ -172,11 +176,18 @@ def main():
     # ── Open camera ───────────────────────────────────────────────────────────
     detector = FaceDetector()
     source = get_camera_source(args)
-    cap = cv2.VideoCapture(source)
+    if isinstance(source, int):
+        cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(source)
+    else:
+        cap = cv2.VideoCapture(source)
 
     if not cap.isOpened() and isinstance(source, int) and source == 0:
         for idx in [1, 2, 3]:
-            tmp = cv2.VideoCapture(idx)
+            tmp = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            if not tmp.isOpened():
+                tmp = cv2.VideoCapture(idx)
             if tmp.isOpened():
                 cap = tmp
                 source = idx
@@ -189,7 +200,12 @@ def main():
             "If using DroidCam, ensure the DroidCam app is running and provide --droidcam <IP>."
         )
 
-    print("Recognizing live. Press 'q' to quit.\n")
+    win_name = "Live Face Recognition  |  q = quit, f = fullscreen"
+    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+    if args.fullscreen:
+        cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+    print(f"Recognizing live. Press 'q' to quit, 'f' to toggle fullscreen.\n")
 
     # ── Banner state ──────────────────────────────────────────────────────────
     banner_until = 0.0          # monotonic timestamp until which to show banner
@@ -296,9 +312,14 @@ def main():
         if time.monotonic() < banner_until:
             draw_banner(frame, banner_lines)
 
-        cv2.imshow("Live Face Recognition  |  q = quit", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        cv2.imshow(win_name, frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
             break
+        elif key == ord("f"):
+            is_full = cv2.getWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN) == cv2.WINDOW_FULLSCREEN
+            new_mode = cv2.WINDOW_NORMAL if is_full else cv2.WINDOW_FULLSCREEN
+            cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, new_mode)
 
     cap.release()
     cv2.destroyAllWindows()
